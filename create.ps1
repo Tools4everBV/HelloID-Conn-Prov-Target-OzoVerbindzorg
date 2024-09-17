@@ -1,0 +1,183 @@
+#################################################
+# HelloID-Conn-Prov-Target-OzoVerbindzorg-Create
+# PowerShell V2
+#################################################
+
+# Enable TLS1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+
+#region functions
+function Resolve-OzoError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [object]
+        $ErrorObject
+    )
+
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            ScriptLineNumber = $ErrorObject.InvocationInfo.ScriptLineNumber
+            Line             = $ErrorObject.InvocationInfo.Line
+            ErrorDetails     = $ErrorObject.Exception.Message
+            FriendlyMessage  = $ErrorObject.Exception.Message
+        }
+
+        if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException')) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails
+            $errorDetailsObject = ($ErrorObject.ErrorDetails | ConvertFrom-Json)
+            $httpErrorObj.FriendlyMessage = $errorDetailsObject.detail
+        }
+
+        elseif ($($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
+                    $errorDetailsObject = ($streamReaderResponse | ConvertFrom-Json)
+                    $httpErrorObj.FriendlyMessage = $errorDetailsObject.detail
+                }
+            }
+        }
+
+        Write-Output $httpErrorObj
+    }
+}
+
+function Convert-ToSCIMObject {
+    param (
+        [Parameter()]
+        [PSCustomObject]
+        $Account
+    )
+
+   $scimObject = @{
+        schemas = @(
+            "urn:ietf:params:scim:schemas:core:2.0:User",
+            "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
+        )
+        displayName = $Account.displayName
+        name = @{
+            familyName = $Account.name_familyName
+            formatted  = $Account.name_formattedName
+            givenName  = $Account.name_givenName
+            middleName = $Account.name_middleName
+        }
+        nickName = $Account.nickName
+        active   = $false
+        userName = $Account.userName
+        userType = $Account.userType
+        emails = @(
+            @{
+                primary = $true
+                type    = 'work'
+                value   = $Account.workEmail
+            }
+        )
+    }
+
+    Write-Output $scimObject
+}
+
+function Set-OzoVerbindzorgTitle {
+    [CmdletBinding()]
+    param (
+        [Parameter()]
+        $Id,
+
+        [Parameter()]
+        [string]
+        $Title,
+
+        [Parameter()]
+        [string]
+        $Secret
+    )
+
+    try {
+        Write-Information "Updating title to: [$Title]"
+
+        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
+        $headers.Add("Authorization", "Bearer $Secret")
+        $splatUpdateTitleParams = @{
+            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users/$Id)"
+            Method      = 'PATCH'
+            ContentType = 'application/json'
+            Body        =  @{
+                schemas = @("urn:ietf:params:scim:api:messages:2.0:PatchOp")
+                Operations = @(@{
+                    op = 'Replace'
+                    path = 'Title'
+                    value = $actionContext.Data.title
+                })
+            } | ConvertTo-Json
+            Headers = $headers
+        }
+        $null = Invoke-RestMethod @splatUpdateTitleParams
+    } catch {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+#endregion
+
+try {
+    # Initial Assignments
+    $outputContext.AccountReference = 'Currently not available'
+
+    # Setting authentication header
+    $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
+    $headers.Add("Authorization", "Bearer $($actionContext.Configuration.Secret)")
+
+    # Add a message and the result of each of the validations showing what will happen during enforcement
+    if ($actionContext.DryRun -eq $true) {
+        Write-Information "[DryRun] Creating and correlating Ozo account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
+    }
+
+    # Process
+    if (-not($actionContext.DryRun -eq $true)) {
+        Write-Information 'Creating and correlating Ozo account'
+        $accountToCreate = Convert-ToSCIMObject -Account $actionContext.Data
+        $splatCreateParams = @{
+            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users"
+            Method      = 'POST'
+            ContentType = 'application/json'
+            Body        = $accountToCreate | ConvertTo-Json
+            Headers     = $headers
+        }
+        $createdAccount = Invoke-RestMethod @splatCreateParams
+        Set-OzoVerbindzorgTitle -Id $createdAccount.id -Title $actionContext.Data.title -Secret $actionContext.Configuration.Secret
+        $outputContext.Data = $createdAccount
+        $outputContext.AccountReference = $createdAccount.id
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Action  = $action
+            Message = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)"
+            IsError = $false
+        })
+        break
+
+        $outputContext.success = $true
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Action  = $action
+                Message = $auditLogMessage
+                IsError = $false
+            })
+    }
+}
+catch {
+    $outputContext.success = $false
+    $ex = $PSItem
+    if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
+        $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObj = Resolve-OzoError -ErrorObject $ex
+        $auditMessage = "Could not create or correlate Ozo account. Error: $($errorObj.FriendlyMessage)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+    }
+    else {
+        $auditMessage = "Could not create or correlate Ozo account. Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
+            IsError = $true
+        })
+}
