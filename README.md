@@ -46,8 +46,6 @@ The following lifecycle actions are available:
 | enable.ps1                            | PowerShell _enable_ lifecycle action         |
 | update.ps1                            | PowerShell _update_ lifecycle action         |
 | permissions/groups/subPermissions.ps1 | PowerShell _subPermissions_ lifecycle action |
-| permissions/groups/permissions.ps1    | PowerShell _permissions_ lifecycle action    |
-| resources/groups/resources.ps1        | PowerShell _resources_ lifecycle action      |
 | configuration.json                    | Default _configuration.json_                 |
 | fieldMapping.json                     | Default _fieldMapping.json_                  |
 
