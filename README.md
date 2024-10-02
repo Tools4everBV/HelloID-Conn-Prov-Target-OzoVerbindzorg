@@ -84,6 +84,8 @@ The `title` field can only be updated. Therefore, within the _update_ lifecycle 
 
 However, its worth noting that the `title` field isn't being returned using a _GET_ call. Therefore, within the comparison between the `$correlatedAccount` and `$actionContext.Data` this property is removed.
 
+> If a `title` does not exist within _Ozo_ it will be created by _Ozo_ itself. 
+
 ### SubPermissions
 
 This connector uses _subPermissions_ in order to grant/revoke a team. For our initial version we made the assumption that the _CostCenter_ matches with the name of team in _OzoVerbindzorg_. This can be configured within the _subPermissions.ps1_ file on line _6_.
