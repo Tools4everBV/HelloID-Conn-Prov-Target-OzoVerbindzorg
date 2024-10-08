@@ -51,23 +51,45 @@ function Convert-ToSCIMObject {
         $Account
     )
 
-   $scimObject = @{
+    $scimObject = @{
         schemas = @(
             "urn:ietf:params:scim:schemas:core:2.0:User",
             "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User"
         )
-        displayName = $Account.displayName
-        name = @{
-            familyName = $Account.name_familyName
-            formatted  = $Account.name_formattedName
-            givenName  = $Account.name_givenName
-            middleName = $Account.name_middleName
-        }
-        nickName = $Account.nickName
-        active   = $false
-        userName = $Account.userName
-        userType = $Account.userType
-        emails = @(
+    }
+
+    if ($Account.displayName) {
+        $scimObject.displayName = $Account.displayName
+    }
+    if ($Account.userName) {
+        $scimObject.userName = $Account.userName
+    }
+    if ($Account.userType) {
+        $scimObject.userType = $Account.userType
+    }
+    if ($Account.nickName) {
+        $scimObject.nickName = $Account.nickName
+    }
+
+    $nameObject = @{}
+    if ($Account.name_familyName) {
+        $nameObject.familyName = $Account.name_familyName
+    }
+    if ($Account.name_givenName) {
+        $nameObject.givenName = $Account.name_givenName
+    }
+    if ($Account.name_middleName) {
+        $nameObject.middleName = $Account.name_middleName
+    }
+    if ($Account.name_formatted) {
+        $nameObject.formatted = $Account.name_formatted
+    }
+    if ($nameObject.Count -gt 0) {
+        $scimObject.name = $nameObject
+    }
+
+    if ($Account.workEmail) {
+        $scimObject.emails = @(
             @{
                 primary = $true
                 type    = 'work'
@@ -92,6 +114,7 @@ function Set-OzoVerbindzorgTitle {
         [Parameter()]
         [string]
         $Secret
+
     )
 
     try {
@@ -130,7 +153,7 @@ try {
 
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
-        Write-Information "[DryRun] Creating and correlating Ozo account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
+        Write-Information "[DryRun] $action Ozo account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
     }
 
     # Process
