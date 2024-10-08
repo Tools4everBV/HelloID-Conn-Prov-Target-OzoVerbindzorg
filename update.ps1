@@ -132,6 +132,13 @@ try {
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add("Authorization", "Bearer $($actionContext.Configuration.Secret)")
 
+    # Filter actionContext.Data and remove null values
+    foreach ($property in $actionContext.Data.PSObject.Properties.Name) {
+        if ([string]::IsNullOrEmpty($actionContext.Data.$property)) {
+            $actionContext.Data.PSObject.Properties.Remove($property)
+        }
+    }
+
     Write-Information "Verifying if a OzoVerbindzorg account for [$($personContext.Person.DisplayName)] exists"
     $splatGetParams = @{
         Uri     = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users/$($actionContext.References.Account)"
