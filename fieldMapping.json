@@ -130,14 +130,14 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getUsername() {\\r\\n    let userPrincipalName = Person.Accounts._3a3e40e7a6f53586e9d005c30677facd.userPrincipalName;\\r\\n    return userPrincipalName;\\r\\n}\\r\\ngetUsername();\"",
+          "Value": "\"function getUsername() {\\r\\n    let userPrincipalName = Person.Accounts.MicrosoftActiveDirectory.userPrincipalName;\\r\\n    return userPrincipalName;\\r\\n}\\r\\ngetUsername();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
       ]
     },
     {
-      "Name": "workEmail",
+      "Name": "email",
       "Description": "Transformed to an emails array object in the JSON payload",
       "Type": "Text",
       "MappingActions": [
@@ -147,7 +147,7 @@
             "Update"
           ],
           "MappingMode": "Complex",
-          "Value": "\"function getUsername() {\\r\\n    let userPrincipalName = Person.Accounts._3a3e40e7a6f53586e9d005c30677facd.userPrincipalName;\\r\\n    return userPrincipalName;\\r\\n}\\r\\ngetUsername();\"",
+          "Value": "\"function getUsername() {\\r\\n    let userPrincipalName = Person.Accounts.MicrosoftActiveDirectory.userPrincipalName;\\r\\n    return userPrincipalName;\\r\\n}\\r\\ngetUsername();\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
