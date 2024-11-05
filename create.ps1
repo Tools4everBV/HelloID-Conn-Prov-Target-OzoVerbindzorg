@@ -70,6 +70,9 @@ function Convert-ToSCIMObject {
     if ($Account.nickName) {
         $scimObject.nickName = $Account.nickName
     }
+    if ($Account.title) {
+        $scimObject.title = $Account.title
+    }
 
     $nameObject = @{}
     if ($Account.name_familyName) {
@@ -87,13 +90,14 @@ function Convert-ToSCIMObject {
     if ($nameObject.Count -gt 0) {
         $scimObject.name = $nameObject
     }
+    
 
-    if ($Account.workEmail) {
+    if ($Account.email) {
         $scimObject.emails = @(
             @{
                 primary = $true
                 type    = 'work'
-                value   = $Account.workEmail
+                value   = $Account.email
             }
         )
     }
@@ -130,12 +134,13 @@ function Set-OzoVerbindzorgTitle {
                 schemas = @("urn:ietf:params:scim:api:messages:2.0:PatchOp")
                 Operations = @(@{
                     op = 'Replace'
-                    path = 'Title'
-                    value = $actionContext.Data.title
+                    path = 'title'
+                    value = $Title
                 })
             } | ConvertTo-Json
             Headers = $headers
         }
+
         $null = Invoke-RestMethod @splatUpdateTitleParams
     } catch {
         $PSCmdlet.ThrowTerminatingError($_)
@@ -152,32 +157,32 @@ try {
     $headers.Add("Authorization", "Bearer $($actionContext.Configuration.Secret)")
 
     if ($actionContext.CorrelationConfiguration.Enabled) {
-            $correlationField = $actionContext.CorrelationConfiguration.accountField
-            $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+        $correlationField = $actionContext.CorrelationConfiguration.accountField
+        $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
 
-            if ([string]::IsNullOrEmpty($correlationField)) {
-                Write-Warning "Correlation is enabled but not configured correctly."
-                Throw "Correlation is enabled but not configured correctly."
-            }
+        if ([string]::IsNullOrEmpty($correlationField)) {
+            Write-Warning "Correlation is enabled but not configured correctly."
+            Throw "Correlation is enabled but not configured correctly."
+        }
 
-            if ([string]::IsNullOrEmpty($correlationValue)) {
-                Write-Warning "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
-                Throw "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
-            }
+        if ([string]::IsNullOrEmpty($correlationValue)) {
+            Write-Warning "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
+            Throw "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
+        }
 
         $splatTestParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users"
+            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users?filter=$($actionContext.CorrelationConfiguration.AccountField) eq `"$($actionContext.CorrelationConfiguration.AccountFieldValue)`""
             Method      = 'GET'
             ContentType = 'application/json'
             Headers     = $headers
         }
-
+        
         $users = Invoke-RestMethod @splatTestParams
 
-        $currentUser = $users.Resources | Where-Object $actionContext.CorrelationConfiguration.AccountField -eq "$($actionContext.CorrelationConfiguration.AccountFieldValue)"
-
-        $currentUser = $currentUser[0]
-
+        if($users.totalResults -eq 1)
+        {
+            $currentUser = $users.Resources[0]
+        }
     }
 
     if (-Not([string]::IsNullOrEmpty($currentUser))) {
@@ -207,21 +212,20 @@ try {
                     Headers     = $headers
                 }
 
-                $createdAccount = Invoke-RestMethod @splatCreateParams
+                $createdAccount = Invoke-RestMethod @splatCreateParams              
 
-                Write-Warning "$($createdAccount.id)"
-
-                $null = Set-OzoVerbindzorgTitle -Id $createdAccount.id -Title $actionContext.Data.title -Secret $actionContext.Configuration.Secret
                 $outputContext.Data = $createdAccount
                 $outputContext.AccountReference = $createdAccount.id
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = $action
+                    Action  = "CreateAccount"
                     Message = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)"
                     IsError = $false
                 })
+
+                $outputContext.Success = $true
+
                 break
 
-                $outputContext.success = $true
             }
             'Correlate' {
                 #region correlate
@@ -237,7 +241,7 @@ try {
                 $outputContext.AccountCorrelated = $true
                 $outputContext.Data = $currentUser
                 $outputContext.success = $true
-                
+
                 break
                 #endregion correlate
             }
