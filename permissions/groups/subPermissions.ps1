@@ -3,11 +3,6 @@
 # PowerShell V2
 #########################################################
 
-# Contract permission mapping
-$objectKey = 'CostCenter'
-$externalIdKey = 'ExternalId'
-$nameKey = 'Name'
-
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
@@ -83,11 +78,25 @@ try {
     $desiredPermissions = @{}
     if (-Not($actionContext.Operation -eq "revoke")) {
         foreach ($contract in $personContext.Person.Contracts) {
-            if ($contract.Context.InConditions) {
-                $desiredPermissions[$contract.$objectKey.$externalIdKey] = $contract.$objectKey.$nameKey
+            if ($contract.Context.InConditions -or $actionContext.DryRun -eq $true) {
+                
+                $correlationValue = $contract.Department.DisplayName
+                
+                $group = $availablePermissions | Where-Object {($_.displayName -eq $correlationValue)}
+
+                if ($null -eq $group) {
+                    throw "No Group found that matches filter '$correlationValue'"
+                }
+                elseif ($groups.count -gt 1) {
+                    throw "Multiple Groups that matches filter '$correlationValue'. Please correct this so the groups are unique."
+                }
+
+                $desiredPermissions["$($group.id)"] = $group.displayName
             }
         }
     }
+
+    Write-Warning ($desiredPermissions | ConvertTo-Json)
 
     # Collect newCurrent permissions
     $newCurrentPermissions = @{}
@@ -132,12 +141,11 @@ try {
     }
 
     # Process desired permissions to grant
-    foreach ($permission in $desiredPermissions.GetEnumerator()) {
-        $permissionToGrant = $availablePermissions | Where-Object {$_.displayName -eq $permission.Value}
+    foreach ($permission in $desiredPermissions.GetEnumerator()) {        
         $outputContext.SubPermissions.Add([PSCustomObject]@{
             DisplayName = $permission.Value
             Reference   = [PSCustomObject]@{
-                Id = $permissionToGrant.id
+                Id = $permission.key
             }
         })
 
@@ -159,7 +167,7 @@ try {
                 } | ConvertTo-Json -Depth 10
 
                 $splatPatchParams = @{
-                    Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Groups/$($permissionToGrant.id)"
+                    Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Groups/$($permission.key)"
                     Method      = 'PATCH'
                     Headers     = $headers
                     Body        = $patchBody

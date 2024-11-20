@@ -70,6 +70,9 @@ function Convert-ToSCIMObject {
     if ($Account.nickName) {
         $scimObject.nickName = $Account.nickName
     }
+    if ($Account.title) {
+        $scimObject.title = $Account.title
+    }
 
     $nameObject = @{}
     if ($Account.name_familyName) {
@@ -87,59 +90,19 @@ function Convert-ToSCIMObject {
     if ($nameObject.Count -gt 0) {
         $scimObject.name = $nameObject
     }
+    
 
-    if ($Account.workEmail) {
+    if ($Account.email) {
         $scimObject.emails = @(
             @{
                 primary = $true
                 type    = 'work'
-                value   = $Account.workEmail
+                value   = $Account.email
             }
         )
     }
 
     Write-Output $scimObject
-}
-
-function Set-OzoVerbindzorgTitle {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        $Id,
-
-        [Parameter()]
-        [string]
-        $Title,
-
-        [Parameter()]
-        [string]
-        $Secret
-
-    )
-
-    try {
-        Write-Information "Updating title to: [$Title]"
-
-        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-        $headers.Add("Authorization", "Bearer $Secret")
-        $splatUpdateTitleParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users/$Id)"
-            Method      = 'PATCH'
-            ContentType = 'application/json'
-            Body        =  @{
-                schemas = @("urn:ietf:params:scim:api:messages:2.0:PatchOp")
-                Operations = @(@{
-                    op = 'Replace'
-                    path = 'Title'
-                    value = $actionContext.Data.title
-                })
-            } | ConvertTo-Json
-            Headers = $headers
-        }
-        $null = Invoke-RestMethod @splatUpdateTitleParams
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
-    }
 }
 #endregion
 
@@ -151,39 +114,95 @@ try {
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add("Authorization", "Bearer $($actionContext.Configuration.Secret)")
 
+    if ($actionContext.CorrelationConfiguration.Enabled) {
+        $correlationField = $actionContext.CorrelationConfiguration.accountField
+        $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+
+        if ([string]::IsNullOrEmpty($correlationField)) {
+            Write-Warning "Correlation is enabled but not configured correctly."
+            Throw "Correlation is enabled but not configured correctly."
+        }
+
+        if ([string]::IsNullOrEmpty($correlationValue)) {
+            Write-Warning "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
+            Throw "The correlation value for [$correlationField] is empty. This is likely a scripting issue."
+        }
+
+        $splatTestParams = @{
+            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users?filter=$($actionContext.CorrelationConfiguration.AccountField) eq `"$($actionContext.CorrelationConfiguration.AccountFieldValue)`""
+            Method      = 'GET'
+            ContentType = 'application/json'
+            Headers     = $headers
+        }
+        $users = Invoke-RestMethod @splatTestParams
+        if($users.totalResults -eq 1) {
+            $currentUser = $users.Resources[0]
+        }
+    }
+
+    if (-Not([string]::IsNullOrEmpty($currentUser))) {
+        $action = 'Correlate'
+    }    
+    else {
+        $action = 'Create' 
+    }
+
     # Add a message and the result of each of the validations showing what will happen during enforcement
     if ($actionContext.DryRun -eq $true) {
         Write-Information "[DryRun] $action Ozo account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
-    }
+    }        
 
     # Process
     if (-not($actionContext.DryRun -eq $true)) {
-        Write-Information 'Creating and correlating Ozo account'
-        $accountToCreate = Convert-ToSCIMObject -Account $actionContext.Data
-        $splatCreateParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users"
-            Method      = 'POST'
-            ContentType = 'application/json'
-            Body        = $accountToCreate | ConvertTo-Json
-            Headers     = $headers
-        }
-        $createdAccount = Invoke-RestMethod @splatCreateParams
-        Set-OzoVerbindzorgTitle -Id $createdAccount.id -Title $actionContext.Data.title -Secret $actionContext.Configuration.Secret
-        $outputContext.Data = $createdAccount
-        $outputContext.AccountReference = $createdAccount.id
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-            Action  = $action
-            Message = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)"
-            IsError = $false
-        })
-        break
+        switch($action)
+        {
+            'Create' {
+                Write-Information 'Creating and correlating Ozo account'
+                $accountToCreate = Convert-ToSCIMObject -Account $actionContext.Data
+                $splatCreateParams = @{
+                    Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users"
+                    Method      = 'POST'
+                    ContentType = 'application/json'
+                    Body        = $accountToCreate | ConvertTo-Json
+                    Headers     = $headers
+                }
 
-        $outputContext.success = $true
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Action  = $action
-                Message = $auditLogMessage
-                IsError = $false
-            })
+                $createdAccount = Invoke-RestMethod @splatCreateParams              
+
+                $outputContext.Data = $createdAccount
+                $outputContext.AccountReference = $createdAccount.id
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Action  = "CreateAccount"
+                    Message = "Create account was successful. AccountReference is: [$($outputContext.AccountReference)"
+                    IsError = $false
+                })
+
+                $outputContext.Success = $true
+
+                break
+
+            }
+            'Correlate' {
+                #region correlate
+                Write-Information "Account with id [$($currentUser.id)] and userName [($($currentUser.userName))] successfully correlated on field [$($correlationField)] with value [$($correlationValue)]"
+
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Action  = "CorrelateAccount"
+                        Message = "Account with id [$($currentUser.id)] and userName [($($currentUser.userName))] successfully correlated on field [$($correlationField)] with value [$($correlationValue)]"
+                        IsError = $false
+                    })
+
+                $outputContext.AccountReference = $currentUser.id
+                $outputContext.AccountCorrelated = $true
+                $outputContext.Data = $currentUser
+                $outputContext.success = $true
+
+                break
+                #endregion correlate
+            }
+
+        }
+        
     }
 }
 catch {

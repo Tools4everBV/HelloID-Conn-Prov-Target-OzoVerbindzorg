@@ -97,7 +97,7 @@ function ConvertTo-SCIMPatchOperationObject {
         $scimPath = $propertyName -replace '_', '.'
 
         if ($null -ne $propertyValue) {
-            if ($property.Name -eq 'workEmail') {
+            if ($property.Name -eq 'email') {
                 $patchOperations += @{
                     op    = 'Replace'
                     path  = "emails[type eq 'work'].value"
@@ -152,12 +152,12 @@ try {
     $correlatedAccount.PSObject.Properties.Remove('groups')
     $correlatedAccount.PSObject.Properties.Remove('meta')
     $correlatedAccount.PSObject.Properties.Remove('active')
-    $correlatedAccount.PSObject.Properties.Remove('title')
+    #$correlatedAccount.PSObject.Properties.Remove('title')
     $email = $correlatedAccount.emails[0].value
     $correlatedAccount.PSObject.Properties.Remove('emails')
 
     $flattenedCorrelatedAccount = ConvertTo-FlatObject -Object $correlatedAccount
-    $flattenedCorrelatedAccount | Add-Member -MemberType NoteProperty -Name 'workEmail' -Value $email
+    $flattenedCorrelatedAccount | Add-Member -MemberType NoteProperty -Name 'email' -Value $email
     $outputContext.PreviousData = $flattenedCorrelatedAccount
 
     # Always compare the account against the current account in target system
@@ -197,6 +197,7 @@ try {
                     ContentType = 'application/json'
                     Body        = $scimPatchJson
                 }
+
                 $null = Invoke-RestMethod @splatUpdateParams
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
