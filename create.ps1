@@ -104,48 +104,6 @@ function Convert-ToSCIMObject {
 
     Write-Output $scimObject
 }
-
-function Set-OzoVerbindzorgTitle {
-    [CmdletBinding()]
-    param (
-        [Parameter()]
-        $Id,
-
-        [Parameter()]
-        [string]
-        $Title,
-
-        [Parameter()]
-        [string]
-        $Secret
-
-    )
-
-    try {
-        Write-Information "Updating title to: [$Title]"
-
-        $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-        $headers.Add("Authorization", "Bearer $Secret")
-        $splatUpdateTitleParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Users/$Id)"
-            Method      = 'PATCH'
-            ContentType = 'application/json'
-            Body        =  @{
-                schemas = @("urn:ietf:params:scim:api:messages:2.0:PatchOp")
-                Operations = @(@{
-                    op = 'Replace'
-                    path = 'title'
-                    value = $Title
-                })
-            } | ConvertTo-Json
-            Headers = $headers
-        }
-
-        $null = Invoke-RestMethod @splatUpdateTitleParams
-    } catch {
-        $PSCmdlet.ThrowTerminatingError($_)
-    }
-}
 #endregion
 
 try {
@@ -176,11 +134,8 @@ try {
             ContentType = 'application/json'
             Headers     = $headers
         }
-        
         $users = Invoke-RestMethod @splatTestParams
-
-        if($users.totalResults -eq 1)
-        {
+        if($users.totalResults -eq 1) {
             $currentUser = $users.Resources[0]
         }
     }
