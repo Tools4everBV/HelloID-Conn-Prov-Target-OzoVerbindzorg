@@ -50,27 +50,26 @@ try {
         Write-Information "[DryRun] $action Ozo account for: [$($personContext.Person.DisplayName)], will be executed during enforcement"
     }
 
-        $splatTestParams = @{
-            Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Groups"
-            Method      = 'GET'
-            ContentType = 'application/json'
-            Headers     = $headers
-        }
+    $splatTestParams = @{
+        Uri         = "$($actionContext.Configuration.BaseUrl)/scim/v2/Groups"
+        Method      = 'GET'
+        ContentType = 'application/json'
+        Headers     = $headers
+    }
 
-        $result = Invoke-RestMethod @splatTestParams
+    $result = Invoke-RestMethod @splatTestParams
 
-        foreach ($r in $result.Resources)
-        {
-            $outputContext.Permissions.Add(
-                @{
-                    DisplayName    = "$($r.displayName)"
-                    Identification = @{
-                        Reference   = $r.id
-                        DisplayName = "$($r.displayName)"
-                    }
+    foreach ($r in $result.Resources) {
+        $outputContext.Permissions.Add(
+            @{
+                DisplayName    = "$($r.displayName)"
+                Identification = @{
+                    Reference   = $r.id
+                    DisplayName = "$($r.displayName)"
                 }
-            )
-        }
+            }
+        )
+    }
 }
 catch {
     $ex = $PSItem
